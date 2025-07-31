@@ -1,0 +1,15 @@
+export interface Player {
+  y: number;
+}
+
+export interface Ball {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+export interface GameState {
+  players: Record<string, Player>;
+  ball: Ball;
+}
