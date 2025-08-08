@@ -4,7 +4,7 @@
 2. Test base setup is working as expected - ✅
 3. Migrate SERVER to TypeScript - ✅
 4. Test everything (including CLIENT) is working as expected - ✅
-5. Migrate CLIENT into NextJS - ⏳
+5. Migrate CLIENT into NextJS - ✅
 6. Test everything is working as expected - ⬜
 7. Deploy SERVER - ⬜
 8. Test CLIENT with deployed SERVER url - ⬜
