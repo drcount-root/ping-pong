@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Online Pong</title>
+  <style>
+    html, body { margin:0; height:100%; background:#111; }
+    canvas { display:block; margin:auto; background:#000; border:2px solid #444; }
+    #status { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:#fff; font:14px system-ui; }
+  </style>
+</head>
+<body>
+  <div id="status">Connecting...</div>
+  <canvas id="game" width="800" height="500"></canvas>
+  <script>
+    const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + (location.host || 'localhost:8080');
+    const ws = new WebSocket(WS_URL);
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const PADDLE_W = 12, PADDLE_H = 90, BALL_R = 8;
+
+    let side = null;
+    let lagCompMs = 100;
+
+    // Keep a small buffer of states for interpolation
+    const stateBuffer = []; // each: {t, ball:{x,y}, left:{y,score}, right:{y,score}}
+    let lastDrawTime = 0;
+
+    const inputDown = new Set();
+
+    function sendInput() {
+      const up = inputDown.has('up');
+      const down = inputDown.has('down');
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type:'input', up, down }));
+      }
+    }
+
+    addEventListener('keydown', e => {
+      if (e.code==='ArrowUp'||e.code==='KeyW') inputDown.add('up');
+      if (e.code==='ArrowDown'||e.code==='KeyS') inputDown.add('down');
+      sendInput();
+    });
+    addEventListener('keyup', e => {
+      if (e.code==='ArrowUp'||e.code==='KeyW') inputDown.delete('up');
+      if (e.code==='ArrowDown'||e.code==='KeyS') inputDown.delete('down');
+      sendInput();
+    });
+
+    ws.onopen = () => { document.getElementById('status').textContent = 'Connected. Waiting for opponent...'; };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'init') {
+        side = msg.side;
+        lagCompMs = msg.lagCompMs || 100;
+        document.getElementById('status').textContent = `You are ${side}. Use W/S or Arrow keys.`;
+      } else if (msg.type === 'state') {
+        stateBuffer.push({
+          t: msg.serverTime,
+          ball: { x: msg.ball.x, y: msg.ball.y },
+          left: msg.left ? { y: msg.left.y, score: msg.left.score } : null,
+          right: msg.right ? { y: msg.right.y, score: msg.right.score } : null,
+        });
+        // Keep last ~1s of states
+        const cutoff = performance.now() - 1500;
+        while (stateBuffer.length > 2 && stateBuffer[0].t < cutoff) stateBuffer.shift();
+      } else if (msg.type === 'ping') {
+        // respond for heartbeat
+        ws.send(JSON.stringify({ type:'pong', t: Date.now() }));
+      } else if (msg.type === 'full') {
+        document.getElementById('status').textContent = 'Server full. Try again later.';
+      } else if (msg.type === 'end') {
+        document.getElementById('status').textContent = `Match ended: ${msg.reason}`;
+      }
+    };
+
+    function lerp(a,b,t){ return a + (b-a)*t; }
+
+    function sampleState(renderTime) {
+      if (stateBuffer.length === 0) return null;
+      // find two states around renderTime
+      let i = stateBuffer.length - 1;
+      while (i > 0 && stateBuffer[i-1].t > renderTime) i--;
+      const prev = stateBuffer[Math.max(0, i-1)];
+      const next = stateBuffer[i];
+
+      if (!prev || !next) return stateBuffer[stateBuffer.length-1];
+
+      const total = next.t - prev.t || 1;
+      const alpha = clamp01((renderTime - prev.t) / total);
+
+      function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+      const out = {
+        ball: {
+          x: lerp(prev.ball.x, next.ball.x, alpha),
+          y: lerp(prev.ball.y, next.ball.y, alpha),
+        },
+        left: next.left && prev.left ? {
+          y: lerp(prev.left.y, next.left.y, alpha),
+          score: next.left.score
+        } : next.left || prev.left,
+        right: next.right && prev.right ? {
+          y: lerp(prev.right.y, next.right.y, alpha),
+          score: next.right.score
+        } : next.right || prev.right,
+      };
+      return out;
+    }
+
+    function draw(now = performance.now()) {
+      requestAnimationFrame(draw);
+      // Render slightly in the past to allow interpolation
+      const renderTime = Date.now() - lagCompMs;
+      const s = sampleState(renderTime);
+      if (!s) return;
+
+      ctx.clearRect(0,0,W,H);
+      // net
+      ctx.fillStyle='#333'; for (let y=0;y<H;y+=16) ctx.fillRect(W/2-2, y, 4, 10);
+      // paddles
+      ctx.fillStyle='#fff';
+      if (s.left) ctx.fillRect(20, s.left.y, PADDLE_W, PADDLE_H);
+      if (s.right) ctx.fillRect(W - 20 - PADDLE_W, s.right.y, PADDLE_W, PADDLE_H);
+      // ball
+      ctx.beginPath(); ctx.arc(s.ball.x, s.ball.y, BALL_R, 0, Math.PI*2); ctx.fill();
+      // score
+      ctx.font='48px system-ui'; ctx.textAlign='center';
+      ctx.fillText((s.left&&s.left.score)||0, W*0.25, 60);
+      ctx.fillText((s.right&&s.right.score)||0, W*0.75, 60);
+
+      lastDrawTime = now;
+    }
+    draw();
+  </script>
+</body>
+</html>
