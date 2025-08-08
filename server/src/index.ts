@@ -1,19 +1,48 @@
 import http from "http";
+import dotenv from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
 
-const PORT = process.env.PORT || 8080;
-const TICK_RATE = 60;
-const WIDTH = 800,
-  HEIGHT = 500;
-const PADDLE_W = 12,
-  PADDLE_H = 90,
-  BALL_R = 8;
-const PADDLE_SPEED = 6;
-const LAG_COMP_MS = 100; // small buffer for interpolation on clients
+dotenv.config();
 
-function makeMatch() {
+const PORT = Number(process.env.PORT) || 8080;
+const TICK_RATE = 60;
+const WIDTH = 800;
+const HEIGHT = 500;
+const PADDLE_W = 12;
+const PADDLE_H = 90;
+const BALL_R = 8;
+const PADDLE_SPEED = 6;
+const LAG_COMP_MS = 100;
+
+type Side = "left" | "right";
+
+interface Player {
+  ws: WebSocket;
+  side: Side;
+  y: number;
+  score: number;
+  up: boolean;
+  down: boolean;
+  lastPong: number;
+}
+
+interface Ball {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+interface Match {
+  players: Player[];
+  ball: Ball;
+  seq: number;
+  startedAt: number;
+}
+
+function makeMatch(): Match {
   return {
-    players: [], // {ws, side:'left'|'right', y, score, up, down, lastPong}
+    players: [],
     ball: {
       x: WIDTH / 2,
       y: HEIGHT / 2,
@@ -25,15 +54,15 @@ function makeMatch() {
   };
 }
 
-const match = makeMatch();
+const match: Match = makeMatch();
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
-function clamp(v, min, max) {
+function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-function resetBall(dir) {
+function resetBall(dir: number): void {
   match.ball.x = WIDTH / 2;
   match.ball.y = HEIGHT / 2;
   const angle = Math.random() * 0.6 - 0.3;
@@ -42,14 +71,16 @@ function resetBall(dir) {
   match.ball.vy = Math.sin(angle) * speed;
 }
 
-function broadcast(obj) {
+function broadcast(obj: unknown): void {
   const msg = JSON.stringify(obj);
   for (const p of match.players) {
-    if (p.ws.readyState === WebSocket.OPEN) p.ws.send(msg);
+    if (p.ws.readyState === WebSocket.OPEN) {
+      p.ws.send(msg);
+    }
   }
 }
 
-function teardownMatch(reason = "reset") {
+function teardownMatch(reason = "reset"): void {
   try {
     broadcast({ type: "end", reason });
   } catch {}
@@ -63,15 +94,15 @@ function teardownMatch(reason = "reset") {
   resetBall(Math.random() < 0.5 ? 1 : -1);
 }
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws: WebSocket) => {
   if (match.players.length >= 2) {
     ws.send(JSON.stringify({ type: "full" }));
     ws.close();
     return;
   }
-  const side = match.players.length === 0 ? "left" : "right";
+  const side: Side = match.players.length === 0 ? "left" : "right";
   const y = HEIGHT / 2 - PADDLE_H / 2;
-  const player = {
+  const player: Player = {
     ws,
     side,
     y,
@@ -92,10 +123,10 @@ wss.on("connection", (ws) => {
     })
   );
 
-  ws.on("message", (data) => {
-    let msg;
+  ws.on("message", (data: WebSocket) => {
+    let msg: any;
     try {
-      msg = JSON.parse(data);
+      msg = JSON.parse(data.toString());
     } catch {
       return;
     }
@@ -108,7 +139,6 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    // If any player leaves, reset the match
     teardownMatch("player_left");
   });
 });
@@ -155,7 +185,7 @@ setInterval(() => {
   const left = match.players.find((p) => p.side === "left");
   const right = match.players.find((p) => p.side === "right");
 
-  function collide(padX, padY, isLeft) {
+  function collide(padX: number, padY: number, isLeft: boolean): void {
     if (
       b.x - BALL_R < padX + PADDLE_W &&
       b.x + BALL_R > padX &&
@@ -189,7 +219,7 @@ setInterval(() => {
   // send state
   match.seq++;
   const payload = {
-    type: "state",
+    type: "state" as const,
     seq: match.seq,
     serverTime: Date.now(),
     ball: match.ball,
