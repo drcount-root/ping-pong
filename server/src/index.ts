@@ -24,6 +24,7 @@ interface Player {
   up: boolean;
   down: boolean;
   lastPong: number;
+  desiredY?: number;
 }
 
 interface Ball {
@@ -135,6 +136,12 @@ wss.on("connection", (ws: WebSocket) => {
       player.down = !!msg.down;
     } else if (msg.type === "pong") {
       player.lastPong = Date.now();
+    } else if (msg.type === "touchMove" && typeof msg.desiredY === "number") {
+      // Clamp desiredY to canvas
+      player.desiredY = Math.max(
+        PADDLE_H / 2,
+        Math.min(HEIGHT - PADDLE_H / 2, msg.desiredY)
+      );
     }
   });
 
@@ -162,9 +169,23 @@ setInterval(() => {
 
 setInterval(() => {
   // update paddles
+  // for (const p of match.players) {
+  //   const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
+  //   p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
+  // }
   for (const p of match.players) {
-    const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
-    p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
+    if (typeof p.desiredY === "number") {
+      // Target paddle center to desiredY; adjust speed multiplier to tune responsiveness
+      const currentCenter = p.y + PADDLE_H / 2;
+      const delta = p.desiredY - currentCenter;
+      const maxStep = 18; // faster than keyboard speed for touch
+      const step = Math.max(-maxStep, Math.min(maxStep, delta));
+      p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + step));
+    } else {
+      // fallback to keyboard up/down logic
+      const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
+      p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + vy));
+    }
   }
 
   // update ball
