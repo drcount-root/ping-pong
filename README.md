@@ -19,12 +19,15 @@
 9. Deploy CLIENT - ✅
 10. Test everything is working as expected - ✅
 11. Should be played in mobile browser too - ✅
-12. Need to add some above or below start from the touched fingerprint surface level, for visibility of the paddle in mobile devices - ⬜
-13. Create Homepage & give a button to Play - ⬜
-14. Redirect to /route Create Room & Join Room logic - ⬜
-15. Before joining into game, need to enter name - ⬜
-16. Room name needed to join into game & room name should be unique - ⬜
-17. ASK ChatGPT for suggestions what cool stuff to add - ⬜
+12. Desktop UI improvements - ⬜
+13. Mobile UI improvements - ⬜
+14. Need to add some above or below start from the touched fingerprint surface level, for visibility of the paddle in mobile devices - ⬜
+15. Create Homepage & give a button to Play - ⬜
+16. Redirect to /route Create Room & Join Room logic - ⬜
+17. Before joining into game, need to enter name - ⬜
+18. Room name needed to join into game & room name should be unique - ⬜
+19. If more users get into the same room, they should be spectators - ⬜
+20. ASK ChatGPT for suggestions what cool stuff to add - ⬜
 
 ✅ = Completed
 ⏳ = In Progress
