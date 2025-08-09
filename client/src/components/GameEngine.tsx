@@ -50,16 +50,16 @@ export default function GameEngine() {
 
   const inputDownRef = useRef<Set<"up" | "down">>(new Set());
 
-  function sendInput() {
+  const sendInput = () => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const up = inputDownRef.current.has("up");
     const down = inputDownRef.current.has("down");
     ws.send(JSON.stringify({ type: "input", up, down }));
-  }
+  };
 
+  // Keyboard input (desktop)
   useEffect(() => {
-    // Keyboard input
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "ArrowUp" || e.code === "KeyW")
         inputDownRef.current.add("up");
@@ -82,6 +82,79 @@ export default function GameEngine() {
     };
   }, []);
 
+  // Touch input (mobile)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Prevent page scroll/zoom while interacting with the canvas
+    const preventDefault = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+
+    // Simple control: touch above mid = up, below mid = down
+    // const handleTouch = (e: TouchEvent) => {
+    //   const rect = canvas.getBoundingClientRect();
+    //   const touch = e.touches[0] || e.changedTouches[0];
+    //   if (!touch) return;
+
+    //   const y = touch.clientY - rect.top;
+    //   const mid = rect.height / 2;
+
+    //   inputDownRef.current.delete("up");
+    //   inputDownRef.current.delete("down");
+
+    //   if (y < mid - 10) inputDownRef.current.add("up");
+    //   else if (y > mid + 10) inputDownRef.current.add("down");
+
+    //   sendInput();
+    // };
+
+    // When touching, compute desiredY in game coordinates
+    const handleTouch = (e: TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0] || e.changedTouches[0];
+      if (!touch) return;
+
+      // Canvas coordinate
+      const yCss = touch.clientY - rect.top;
+      // Convert CSS pixel to canvas pixel (handles CSS scaling)
+      const yCanvas = (yCss / rect.height) * HEIGHT;
+
+      // Send direct intent: desired paddle center Y
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "touchMove", desiredY: yCanvas }));
+      }
+    };
+
+    const clearTouch = () => {
+      inputDownRef.current.delete("up");
+      inputDownRef.current.delete("down");
+      sendInput();
+    };
+
+    // Use passive:false so preventDefault works
+    canvas.addEventListener("touchstart", preventDefault, { passive: false });
+    canvas.addEventListener("touchmove", preventDefault, { passive: false });
+
+    canvas.addEventListener("touchstart", handleTouch, { passive: false });
+    canvas.addEventListener("touchmove", handleTouch, { passive: false });
+    canvas.addEventListener("touchend", clearTouch, { passive: false });
+    canvas.addEventListener("touchcancel", clearTouch, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("touchstart", preventDefault);
+      canvas.removeEventListener("touchmove", preventDefault);
+
+      canvas.removeEventListener("touchstart", handleTouch);
+      canvas.removeEventListener("touchmove", handleTouch);
+      canvas.removeEventListener("touchend", clearTouch);
+      canvas.removeEventListener("touchcancel", clearTouch);
+    };
+  }, []);
+
+  // WebSocket connection
   useEffect(() => {
     // Open WebSocket
     const envUrl = process.env.NEXT_PUBLIC_WS_URL;
@@ -110,7 +183,7 @@ export default function GameEngine() {
         sideRef.current = msg.side;
         lagCompMsRef.current = msg.lagCompMs ?? 100;
         if (statusRef.current)
-          statusRef.current.textContent = `You are ${msg.side}. Use W/S or Arrow keys.`;
+          statusRef.current.textContent = `You are ${msg.side}. Use W/S, Arrow keys, or touch.`;
       } else if (msg.type === "state") {
         stateBufferRef.current.push({
           t: msg.serverTime,
@@ -145,8 +218,8 @@ export default function GameEngine() {
     };
   }, []);
 
+  // Render loop
   useEffect(() => {
-    // Render loop
     let raf = 0;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -258,17 +331,85 @@ export default function GameEngine() {
       >
         Connecting...
       </div>
+
       <canvas
         ref={canvasRef}
         width={WIDTH}
         height={HEIGHT}
         style={{
           display: "block",
-          margin: "auto",
+          margin: "0 auto",
           background: "#000",
           border: "2px solid #444",
+          // Mobile-friendly scaling
+          width: "100%",
+          maxWidth: 800,
+          height: "auto",
+          // Reduce browser gestures on touch
+          touchAction: "none",
         }}
       />
+
+      {/* Optional on-screen buttons for mobile one-handed play */}
+      <div
+        style={{
+          position: "fixed",
+          right: 12,
+          bottom: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          zIndex: 10,
+          userSelect: "none",
+        }}
+      >
+        <button
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 8,
+            background: "#222",
+            color: "#fff",
+            border: "1px solid #444",
+            fontSize: 24,
+          }}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            inputDownRef.current.add("up");
+            sendInput();
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            inputDownRef.current.delete("up");
+            sendInput();
+          }}
+        >
+          ↑
+        </button>
+        <button
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 8,
+            background: "#222",
+            color: "#fff",
+            border: "1px solid #444",
+            fontSize: 24,
+          }}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            inputDownRef.current.add("down");
+            sendInput();
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            inputDownRef.current.delete("down");
+            sendInput();
+          }}
+        >
+          ↓
+        </button>
+      </div>
     </main>
   );
 }
