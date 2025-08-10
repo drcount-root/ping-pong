@@ -4,7 +4,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 dotenv.config();
 
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = Number(process.env.PORT) || 8081;
 const TICK_RATE = 60;
 const WIDTH = 800;
 const HEIGHT = 500;
@@ -127,7 +127,7 @@ wss.on("connection", (ws: WebSocket) => {
   ws.on("message", (data: WebSocket) => {
     let msg: any;
     try {
-      msg = JSON.parse(data.toString());
+      msg = JSON.parse((data as unknown as Buffer).toString());
     } catch {
       return;
     }
@@ -137,11 +137,10 @@ wss.on("connection", (ws: WebSocket) => {
     } else if (msg.type === "pong") {
       player.lastPong = Date.now();
     } else if (msg.type === "touchMove" && typeof msg.desiredY === "number") {
-      // Clamp desiredY to canvas
-      player.desiredY = Math.max(
-        PADDLE_H / 2,
-        Math.min(HEIGHT - PADDLE_H / 2, msg.desiredY)
-      );
+      // Clamp desiredY to canvas (paddle centers to desiredY)
+      player.desiredY = clamp(msg.desiredY, PADDLE_H / 2, HEIGHT - PADDLE_H / 2);
+    } else if (msg.type === "touchEnd") {
+      player.desiredY = undefined;
     }
   });
 
@@ -169,22 +168,20 @@ setInterval(() => {
 
 setInterval(() => {
   // update paddles
-  // for (const p of match.players) {
-  //   const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
-  //   p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
-  // }
   for (const p of match.players) {
     if (typeof p.desiredY === "number") {
-      // Target paddle center to desiredY; adjust speed multiplier to tune responsiveness
+      // Frame-rate–independent speed towards desiredY (center-based)
+      const dt = 1 / TICK_RATE; // ~0.0167
+      const maxSpeed = 1100; // px/sec (tune to taste)
+      const maxStep = maxSpeed * dt;
       const currentCenter = p.y + PADDLE_H / 2;
       const delta = p.desiredY - currentCenter;
-      const maxStep = 18; // faster than keyboard speed for touch
-      const step = Math.max(-maxStep, Math.min(maxStep, delta));
-      p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + step));
+      const step = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
+      p.y = clamp(p.y + step, 0, HEIGHT - PADDLE_H);
     } else {
       // fallback to keyboard up/down logic
       const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
-      p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + vy));
+      p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
     }
   }
 

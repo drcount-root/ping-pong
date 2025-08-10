@@ -28,6 +28,8 @@
 18. Room name needed to join into game & room name should be unique - ⬜
 19. If more users get into the same room, they should be spectators - ⬜
 20. ASK ChatGPT for suggestions what cool stuff to add - ⬜
+21. super power charge if continuously hit the ball for 15 seconds - ⬜
+22. health of players - water, fire, air, earth, electricity, space as powers - ⬜
 
 ✅ = Completed
 ⏳ = In Progress

@@ -30,6 +30,7 @@ const HEIGHT = 500;
 const PADDLE_W = 12;
 const PADDLE_H = 90;
 const BALL_R = 8;
+const FINGER_OFFSET = 150;
 
 export default function GameEngine() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -50,6 +51,10 @@ export default function GameEngine() {
 
   const inputDownRef = useRef<Set<"up" | "down">>(new Set());
 
+  // For throttling pointer/touch sends
+  const lastTouchSendRef = useRef(0);
+  const lastDesiredYRef = useRef<number | null>(null);
+
   const sendInput = () => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -61,17 +66,13 @@ export default function GameEngine() {
   // Keyboard input (desktop)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "ArrowUp" || e.code === "KeyW")
-        inputDownRef.current.add("up");
-      if (e.code === "ArrowDown" || e.code === "KeyS")
-        inputDownRef.current.add("down");
+      if (e.code === "ArrowUp" || e.code === "KeyW") inputDownRef.current.add("up");
+      if (e.code === "ArrowDown" || e.code === "KeyS") inputDownRef.current.add("down");
       sendInput();
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "ArrowUp" || e.code === "KeyW")
-        inputDownRef.current.delete("up");
-      if (e.code === "ArrowDown" || e.code === "KeyS")
-        inputDownRef.current.delete("down");
+      if (e.code === "ArrowUp" || e.code === "KeyW") inputDownRef.current.delete("up");
+      if (e.code === "ArrowDown" || e.code === "KeyS") inputDownRef.current.delete("down");
       sendInput();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -82,75 +83,68 @@ export default function GameEngine() {
     };
   }, []);
 
-  // Touch input (mobile)
+  // Pointer input (mobile + desktop)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Prevent page scroll/zoom while interacting with the canvas
-    const preventDefault = (e: TouchEvent) => {
-      e.preventDefault();
-    };
-
-    // Simple control: touch above mid = up, below mid = down
-    // const handleTouch = (e: TouchEvent) => {
-    //   const rect = canvas.getBoundingClientRect();
-    //   const touch = e.touches[0] || e.changedTouches[0];
-    //   if (!touch) return;
-
-    //   const y = touch.clientY - rect.top;
-    //   const mid = rect.height / 2;
-
-    //   inputDownRef.current.delete("up");
-    //   inputDownRef.current.delete("down");
-
-    //   if (y < mid - 10) inputDownRef.current.add("up");
-    //   else if (y > mid + 10) inputDownRef.current.add("down");
-
-    //   sendInput();
-    // };
-
-    // When touching, compute desiredY in game coordinates
-    const handleTouch = (e: TouchEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const touch = e.touches[0] || e.changedTouches[0];
-      if (!touch) return;
-      const yCanvas = ((touch.clientY - rect.top) / rect.height) * HEIGHT;
+    const sendDesiredY = (yCanvas: number) => {
       const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "touchMove", desiredY: yCanvas }));
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      const now = performance.now();
+      // Cap ~125 Hz and ignore tiny changes
+      if (
+        lastDesiredYRef.current !== null &&
+        Math.abs(lastDesiredYRef.current - yCanvas) < 0.5 &&
+        now - lastTouchSendRef.current < 8
+      ) {
+        return;
       }
+      if (now - lastTouchSendRef.current < 8) return;
+
+      lastDesiredYRef.current = yCanvas;
+      lastTouchSendRef.current = now;
+      ws.send(JSON.stringify({ type: "touchMove", desiredY: yCanvas }));
     };
 
-    const clearTouch = () => {
+    const handlePointer = (e: PointerEvent) => {
+      // Ignore stray mouse moves with no button pressed
+      if (e.pointerType === "mouse" && e.buttons === 0) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const rawY = ((e.clientY - rect.top) / rect.height) * HEIGHT;
+      const yCanvas = Math.max(PADDLE_H / 2, Math.min(HEIGHT - PADDLE_H / 2, rawY - FINGER_OFFSET));
+      sendDesiredY(yCanvas);
+    };
+
+    const clearPointer = () => {
       inputDownRef.current.delete("up");
       inputDownRef.current.delete("down");
       sendInput();
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "touchEnd" }));
+      }
+      lastDesiredYRef.current = null;
     };
 
-    // Use passive:false so preventDefault works
-    canvas.addEventListener("touchstart", preventDefault, { passive: false });
-    canvas.addEventListener("touchmove", preventDefault, { passive: false });
-
-    canvas.addEventListener("touchstart", handleTouch, { passive: false });
-    canvas.addEventListener("touchmove", handleTouch, { passive: false });
-    canvas.addEventListener("touchend", clearTouch, { passive: false });
-    canvas.addEventListener("touchcancel", clearTouch, { passive: false });
+    // Using pointer events reduces duplication across touch/mouse/stylus
+    canvas.addEventListener("pointerdown", handlePointer, { passive: true });
+    canvas.addEventListener("pointermove", handlePointer, { passive: true });
+    window.addEventListener("pointerup", clearPointer, { passive: true });
+    window.addEventListener("pointercancel", clearPointer, { passive: true });
 
     return () => {
-      canvas.removeEventListener("touchstart", preventDefault);
-      canvas.removeEventListener("touchmove", preventDefault);
-
-      canvas.removeEventListener("touchstart", handleTouch);
-      canvas.removeEventListener("touchmove", handleTouch);
-      canvas.removeEventListener("touchend", clearTouch);
-      canvas.removeEventListener("touchcancel", clearTouch);
+      canvas.removeEventListener("pointerdown", handlePointer);
+      canvas.removeEventListener("pointermove", handlePointer);
+      window.removeEventListener("pointerup", clearPointer);
+      window.removeEventListener("pointercancel", clearPointer);
     };
   }, []);
 
   // WebSocket connection
   useEffect(() => {
-    // Open WebSocket
     const envUrl = process.env.NEXT_PUBLIC_WS_URL;
     const defaultUrl =
       (location.protocol === "https:" ? "wss://" : "ws://") +
@@ -288,8 +282,7 @@ export default function GameEngine() {
       // Paddles
       ctx.fillStyle = "#0ff";
       if (s.left) ctx.fillRect(20, s.left.y, PADDLE_W, PADDLE_H);
-      if (s.right)
-        ctx.fillRect(W - 20 - PADDLE_W, s.right.y, PADDLE_W, PADDLE_H);
+      if (s.right) ctx.fillRect(W - 20 - PADDLE_W, s.right.y, PADDLE_W, PADDLE_H);
 
       // Ball (glowing pulse)
       ctx.beginPath();
@@ -383,19 +376,20 @@ export default function GameEngine() {
               fontSize: 24,
               boxShadow: "0 0 10px rgba(0,255,255,0.5)",
               userSelect: "none",
-              WebkitUserSelect: "none" /* Safari */,
-              msUserSelect: "none" /* IE 10+ */,
+              WebkitUserSelect: "none",
+              msUserSelect: "none",
+              touchAction: "none",
             }}
-            onTouchStart={(e) => {
-              e.preventDefault();
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
               inputDownRef.current.add(idx === 0 ? "up" : "down");
               sendInput();
             }}
-            onTouchEnd={(e) => {
-              e.preventDefault();
+            onPointerUp={(e) => {
               inputDownRef.current.delete(idx === 0 ? "up" : "down");
               sendInput();
             }}
+            onContextMenu={(e) => e.preventDefault()}
           >
             {arrow}
           </button>
