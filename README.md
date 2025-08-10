@@ -18,12 +18,18 @@
 8. Test CLIENT with deployed SERVER url - ✅
 9. Deploy CLIENT - ✅
 10. Test everything is working as expected - ✅
-11. Should be played in mobile browser too - ⬜
-12. Create Homepage & give a button to Play - ⬜
-13. Redirect to /route Create Room & Join Room logic - ⬜
-14. Before joining into game, need to enter name - ⬜
-15. Room name needed to join into game & room name should be unique - ⬜
-16. ASK ChatGPT for suggestions what cool stuff to add - ⬜
+11. Should be played in mobile browser too - ✅
+12. Desktop UI improvements - ⬜
+13. Mobile UI improvements - ⬜
+14. Need to add some above or below start from the touched fingerprint surface level, for visibility of the paddle in mobile devices - ⬜
+15. Create Homepage & give a button to Play - ⬜
+16. Redirect to /route Create Room & Join Room logic - ⬜
+17. Before joining into game, need to enter name - ⬜
+18. Room name needed to join into game & room name should be unique - ⬜
+19. If more users get into the same room, they should be spectators - ⬜
+20. ASK ChatGPT for suggestions what cool stuff to add - ⬜
+21. super power charge if continuously hit the ball for 15 seconds - ⬜
+22. health of players - water, fire, air, earth, electricity, space as powers - ⬜
 
 ✅ = Completed
 ⏳ = In Progress
