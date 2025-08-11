@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  manifest: "/manifest.ts",
   title: "Online Pong",
   description: "WebSocket Pong Client",
 };
