@@ -107,11 +107,8 @@ wss.on("connection", (ws) => {
             player.lastPong = Date.now();
         }
         else if (msg.type === "touchMove" && typeof msg.desiredY === "number") {
-            // Clamp desiredY to canvas (paddle centers to desiredY)
-            player.desiredY = clamp(msg.desiredY, PADDLE_H / 2, HEIGHT - PADDLE_H / 2);
-        }
-        else if (msg.type === "touchEnd") {
-            player.desiredY = undefined;
+            // Clamp desiredY to canvas
+            player.desiredY = Math.max(PADDLE_H / 2, Math.min(HEIGHT - PADDLE_H / 2, msg.desiredY));
         }
     });
     ws.on("close", () => {
@@ -138,21 +135,23 @@ setInterval(() => {
 }, 3000);
 setInterval(() => {
     // update paddles
+    // for (const p of match.players) {
+    //   const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
+    //   p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
+    // }
     for (const p of match.players) {
         if (typeof p.desiredY === "number") {
-            // Frame-rate–independent speed towards desiredY (center-based)
-            const dt = 1 / TICK_RATE; // ~0.0167
-            const maxSpeed = 1100; // px/sec (tune to taste)
-            const maxStep = maxSpeed * dt;
+            // Target paddle center to desiredY; adjust speed multiplier to tune responsiveness
             const currentCenter = p.y + PADDLE_H / 2;
             const delta = p.desiredY - currentCenter;
-            const step = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
-            p.y = clamp(p.y + step, 0, HEIGHT - PADDLE_H);
+            const maxStep = 18; // faster than keyboard speed for touch
+            const step = Math.max(-maxStep, Math.min(maxStep, delta));
+            p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + step));
         }
         else {
             // fallback to keyboard up/down logic
             const vy = (p.up ? -PADDLE_SPEED : 0) + (p.down ? PADDLE_SPEED : 0);
-            p.y = clamp(p.y + vy, 0, HEIGHT - PADDLE_H);
+            p.y = Math.max(0, Math.min(HEIGHT - PADDLE_H, p.y + vy));
         }
     }
     // update ball
